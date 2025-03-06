@@ -2,11 +2,12 @@ package main
 
 import (
 	"flag"
-	"gthub.com/obzva/image-resize/imageio"
-	"gthub.com/obzva/image-resize/interpolation"
 	"image"
 	"log"
 	"regexp"
+
+	"gthub.com/obzva/image-resize/imageio"
+	"gthub.com/obzva/image-resize/interpolation"
 )
 
 func main() {
@@ -48,7 +49,11 @@ func main() {
 		res = interpolation.NearestNeighbor(src, *wPtr, *hPtr)
 	case "bilinear":
 		res = interpolation.Bilinear(src, *wPtr, *hPtr)
+	case "bicubic":
+		res, err = interpolation.Bicubic(src, *wPtr, *hPtr)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
-
 	imageio.CreateImageFile(*outputPtr, res)
 }
