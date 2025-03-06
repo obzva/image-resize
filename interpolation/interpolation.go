@@ -29,7 +29,7 @@ func Bilinear(src *image.RGBA, w, h int) *image.RGBA {
 	srcRect := src.Bounds()
 	srcW := srcRect.Dx()
 	srcH := srcRect.Dy()
-	
+
 	scaleW := float64(w) / float64(srcW)
 	scaleH := float64(h) / float64(srcH)
 
@@ -177,7 +177,7 @@ func Bilinear(src *image.RGBA, w, h int) *image.RGBA {
 }
 
 func getOffset(k float64) float64 {
-	return (k-1)/(2*k)
+	return (k - 1) / (2 * k)
 }
 
 func internalDivisionX(r1, g1, b1, a1, r2, g2, b2, a2, x1, x2, x float64) (r float64, g float64, b float64, a float64) {
@@ -185,10 +185,10 @@ func internalDivisionX(r1, g1, b1, a1, r2, g2, b2, a2, x1, x2, x float64) (r flo
 		log.Fatalf("it should be like: x1 <= x <= x2 but got x1: %f, x2: %f, and x:%f\n", x1, x2, x)
 	}
 
-	r = (x2 - x) / (x2 - x1) * float64(r1) + (x - x1) / (x2 - x1) * float64(r2)
-	g = (x2 - x) / (x2 - x1) * float64(g1) + (x - x1) / (x2 - x1) * float64(g2)
-	b = (x2 - x) / (x2 - x1) * float64(b1) + (x - x1) / (x2 - x1) * float64(b2)
-	a = (x2 - x) / (x2 - x1) * float64(a1) + (x - x1) / (x2 - x1) * float64(a2)
+	r = (x2-x)/(x2-x1)*float64(r1) + (x-x1)/(x2-x1)*float64(r2)
+	g = (x2-x)/(x2-x1)*float64(g1) + (x-x1)/(x2-x1)*float64(g2)
+	b = (x2-x)/(x2-x1)*float64(b1) + (x-x1)/(x2-x1)*float64(b2)
+	a = (x2-x)/(x2-x1)*float64(a1) + (x-x1)/(x2-x1)*float64(a2)
 
 	return r, g, b, a
 }
@@ -198,10 +198,10 @@ func internalDivisionY(r1, g1, b1, a1, r2, g2, b2, a2, y1, y2, y float64) (r flo
 		log.Fatalf("it should be like: y1 <= y <= y2but got y1: %f, y2: %f, and y:%f", y1, y2, y)
 	}
 
-	r = (y2 - y) / (y2 - y1) * float64(r1) + (y - y1) / (y2 - y1) * float64(r2)
-	g = (y2 - y) / (y2 - y1) * float64(g1) + (y - y1) / (y2 - y1) * float64(g2)
-	b = (y2 - y) / (y2 - y1) * float64(b1) + (y - y1) / (y2 - y1) * float64(b2)
-	a = (y2 - y) / (y2 - y1) * float64(a1) + (y - y1) / (y2 - y1) * float64(a2)
+	r = (y2-y)/(y2-y1)*float64(r1) + (y-y1)/(y2-y1)*float64(r2)
+	g = (y2-y)/(y2-y1)*float64(g1) + (y-y1)/(y2-y1)*float64(g2)
+	b = (y2-y)/(y2-y1)*float64(b1) + (y-y1)/(y2-y1)*float64(b2)
+	a = (y2-y)/(y2-y1)*float64(a1) + (y-y1)/(y2-y1)*float64(a2)
 
 	return r, g, b, a
 }

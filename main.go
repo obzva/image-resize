@@ -2,11 +2,11 @@ package main
 
 import (
 	"flag"
+	"gthub.com/obzva/image-resize/imageio"
+	"gthub.com/obzva/image-resize/interpolation"
 	"image"
 	"log"
 	"regexp"
-	"gthub.com/obzva/image-resize/imageio"
-	"gthub.com/obzva/image-resize/interpolation"
 )
 
 func main() {
