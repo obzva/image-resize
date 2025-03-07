@@ -314,10 +314,19 @@ func Bicubic(src *image.RGBA, w, h int) (*image.RGBA, error) {
 					pA[i] = float64(src.RGBAAt(nX, intY-1+i).A)
 				}
 
-				iR := uint8(math.Round(catmullRomSpline(fractionY, pR[0], pR[1], pR[2], pR[3])))
-				iG := uint8(math.Round(catmullRomSpline(fractionY, pG[0], pG[1], pG[2], pG[3])))
-				iB := uint8(math.Round(catmullRomSpline(fractionY, pB[0], pB[1], pB[2], pB[3])))
-				iA := uint8(math.Round(catmullRomSpline(fractionY, pA[0], pA[1], pA[2], pA[3])))
+				// testR := catmullRomSpline(fractionY, pR[0], pR[1], pR[2], pR[3])
+				// testG := catmullRomSpline(fractionY, pG[0], pG[1], pG[2], pG[3])
+				// testB := catmullRomSpline(fractionY, pB[0], pB[1], pB[2], pB[3])
+				// testA := catmullRomSpline(fractionY, pA[0], pA[1], pA[2], pA[3])
+
+				// if testR < 0 || testR > 255 || testG < 0 || testG > 255 ||testB < 0 || testB > 255 ||testA < 0 || testA > 255 {
+				// 	fmt.Printf("anomaly detected for coord (%d, %d) : (%f, %f, %f, %f)\n", x, y, testR, testG, testB, testA)
+				// }
+
+				iR := clamp(catmullRomSpline(fractionY, pR[0], pR[1], pR[2], pR[3]))
+				iG := clamp(catmullRomSpline(fractionY, pG[0], pG[1], pG[2], pG[3]))
+				iB := clamp(catmullRomSpline(fractionY, pB[0], pB[1], pB[2], pB[3]))
+				iA := clamp(catmullRomSpline(fractionY, pA[0], pA[1], pA[2], pA[3]))
 
 				iC = color.RGBA{iR, iG, iB, iA}
 			} else if outY { // use only x-axis
@@ -347,10 +356,19 @@ func Bicubic(src *image.RGBA, w, h int) (*image.RGBA, error) {
 					pA[i] = float64(src.RGBAAt(intX-1+i, nY).A)
 				}
 
-				iR := uint8(math.Round(catmullRomSpline(fractionX, pR[0], pR[1], pR[2], pR[3])))
-				iG := uint8(math.Round(catmullRomSpline(fractionX, pG[0], pG[1], pG[2], pG[3])))
-				iB := uint8(math.Round(catmullRomSpline(fractionX, pB[0], pB[1], pB[2], pB[3])))
-				iA := uint8(math.Round(catmullRomSpline(fractionX, pA[0], pA[1], pA[2], pA[3])))
+				// testR := catmullRomSpline(fractionX, pR[0], pR[1], pR[2], pR[3])
+				// testG := catmullRomSpline(fractionX, pG[0], pG[1], pG[2], pG[3])
+				// testB := catmullRomSpline(fractionX, pB[0], pB[1], pB[2], pB[3])
+				// testA := catmullRomSpline(fractionX, pA[0], pA[1], pA[2], pA[3])
+
+				// if testR < 0 || testR > 255 || testG < 0 || testG > 255 ||testB < 0 || testB > 255 ||testA < 0 || testA > 255 {
+				// 	fmt.Printf("anomaly detected for coord (%d, %d) : (%f, %f, %f, %f)\n", x, y, testR, testG, testB, testA)
+				// }
+
+				iR := clamp(catmullRomSpline(fractionX, pR[0], pR[1], pR[2], pR[3]))
+				iG := clamp(catmullRomSpline(fractionX, pG[0], pG[1], pG[2], pG[3]))
+				iB := clamp(catmullRomSpline(fractionX, pB[0], pB[1], pB[2], pB[3]))
+				iA := clamp(catmullRomSpline(fractionX, pA[0], pA[1], pA[2], pA[3]))
 
 				iC = color.RGBA{iR, iG, iB, iA}
 			} else { // use both two axes, x first y later
@@ -365,27 +383,26 @@ func Bicubic(src *image.RGBA, w, h int) (*image.RGBA, error) {
 				intY := int(floorY)
 
 				var tmpR, tmpG, tmpB, tmpA [4]float64
+				var pR, pG, pB, pA [4][4]float64
 
 				for i := range 4 {
-					var pR, pG, pB, pA [4]float64
-
 					for j := range 4 {
-						pR[j] = float64(src.RGBAAt(intX-1+j, intY-1+i).R)
-						pG[j] = float64(src.RGBAAt(intX-1+j, intY-1+i).G)
-						pB[j] = float64(src.RGBAAt(intX-1+j, intY-1+i).B)
-						pA[j] = float64(src.RGBAAt(intX-1+j, intY-1+i).A)
+						pR[i][j] = float64(src.RGBAAt(intX-1+j, intY-1+i).R)
+						pG[i][j] = float64(src.RGBAAt(intX-1+j, intY-1+i).G)
+						pB[i][j] = float64(src.RGBAAt(intX-1+j, intY-1+i).B)
+						pA[i][j] = float64(src.RGBAAt(intX-1+j, intY-1+i).A)
 					}
 
-					tmpR[i] = catmullRomSpline(fractionX, pR[0], pR[1], pR[2], pR[3])
-					tmpG[i] = catmullRomSpline(fractionX, pG[0], pG[1], pG[2], pG[3])
-					tmpB[i] = catmullRomSpline(fractionX, pB[0], pB[1], pB[2], pB[3])
-					tmpA[i] = catmullRomSpline(fractionX, pA[0], pA[1], pA[2], pA[3])
+					tmpR[i] = catmullRomSpline(fractionX, pR[i][0], pR[i][1], pR[i][2], pR[i][3])
+					tmpG[i] = catmullRomSpline(fractionX, pG[i][0], pG[i][1], pG[i][2], pG[i][3])
+					tmpB[i] = catmullRomSpline(fractionX, pB[i][0], pB[i][1], pB[i][2], pB[i][3])
+					tmpA[i] = catmullRomSpline(fractionX, pA[i][0], pA[i][1], pA[i][2], pA[i][3])
 				}
 
-				iR := uint8(math.Round(catmullRomSpline(fractionY, tmpR[0], tmpR[1], tmpR[2], tmpR[3])))
-				iG := uint8(math.Round(catmullRomSpline(fractionY, tmpG[0], tmpG[1], tmpG[2], tmpG[3])))
-				iB := uint8(math.Round(catmullRomSpline(fractionY, tmpB[0], tmpB[1], tmpB[2], tmpB[3])))
-				iA := uint8(math.Round(catmullRomSpline(fractionY, tmpA[0], tmpA[1], tmpA[2], tmpA[3])))
+				iR := clamp(catmullRomSpline(fractionY, tmpR[0], tmpR[1], tmpR[2], tmpR[3]))
+				iG := clamp(catmullRomSpline(fractionY, tmpG[0], tmpG[1], tmpG[2], tmpG[3]))
+				iB := clamp(catmullRomSpline(fractionY, tmpB[0], tmpB[1], tmpB[2], tmpB[3]))
+				iA := clamp(catmullRomSpline(fractionY, tmpA[0], tmpA[1], tmpA[2], tmpA[3]))
 
 				iC = color.RGBA{iR, iG, iB, iA}
 			}
@@ -393,4 +410,14 @@ func Bicubic(src *image.RGBA, w, h int) (*image.RGBA, error) {
 		}
 	}
 	return res, nil
+}
+
+func clamp(v float64) uint8 {
+	if v > 255 { // overshoot
+		return 255
+	} else if v < 0 { // undershoot
+		return 0
+	} else {
+		return uint8(math.Round(v))
+	}
 }

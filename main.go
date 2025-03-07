@@ -14,7 +14,7 @@ func main() {
 	pathPtr := flag.String("p", "", "input image path")
 	wPtr := flag.Int("w", 0, "desired width of an output image (defaults to the original width when omitted)")
 	hPtr := flag.Int("h", 0, "desired height of an output image (defaults to the original height when omitted)")
-	methodPtr := flag.String("m", "nearest-neighbor", "desired interpolation method (defaults to nearest-neighbor when omitted)")
+	methodPtr := flag.String("m", "nearestneighbor", "desired interpolation method (defaults to nearest-neighbor when omitted)")
 	outputPtr := flag.String("o", "", "desired output filename (defaults to the method name when omitted)")
 
 	flag.Parse()
@@ -45,7 +45,7 @@ func main() {
 
 	var res *image.RGBA
 	switch *methodPtr {
-	case "nearest-neighbor":
+	case "nearestneighbor":
 		res = interpolation.NearestNeighbor(src, *wPtr, *hPtr)
 	case "bilinear":
 		res = interpolation.Bilinear(src, *wPtr, *hPtr)
@@ -54,6 +54,8 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+	default:
+		log.Fatal("wrong interpolation method passed")
 	}
 	imageio.CreateImageFile(*outputPtr, res)
 }
