@@ -16,6 +16,7 @@ func main() {
 	hPtr := flag.Int("h", 0, "desired height of an output image (defaults to the original height when omitted)")
 	methodPtr := flag.String("m", "nearestneighbor", "desired interpolation method (defaults to nearest-neighbor when omitted)")
 	outputPtr := flag.String("o", "", "desired output filename (defaults to the method name when omitted)")
+	concurrencyPtr := flag.Bool("c", true, "concurrency mode")
 
 	flag.Parse()
 
@@ -46,16 +47,17 @@ func main() {
 	var res *image.RGBA
 	switch *methodPtr {
 	case "nearestneighbor":
-		res = interpolation.NearestNeighbor(src, *wPtr, *hPtr)
+		res = interpolation.NearestNeighbor(src, *wPtr, *hPtr, *concurrencyPtr)
 	case "bilinear":
-		res = interpolation.Bilinear(src, *wPtr, *hPtr)
+		res = interpolation.Bilinear(src, *wPtr, *hPtr, *concurrencyPtr)
 	case "bicubic":
-		res, err = interpolation.Bicubic(src, *wPtr, *hPtr)
+		res, err = interpolation.Bicubic(src, *wPtr, *hPtr, *concurrencyPtr)
 		if err != nil {
 			log.Fatal(err)
 		}
 	default:
 		log.Fatal("wrong interpolation method passed")
 	}
+
 	imageio.CreateImageFile(*outputPtr, res)
 }

@@ -41,7 +41,22 @@ func TestNearestNeighbor(t *testing.T) {
 		}
 	}
 
-	actual := NearestNeighbor(src, 6, 6)
+	// concurrency = false
+	actual := NearestNeighbor(src, 6, 6, false)
+
+	// compare each cells' RGBA values
+	for y := range 6 {
+		for x := range 6 {
+			aR, aB, aG, aA := actual.At(x, y).RGBA()
+			eR, eB, eG, eA := expected.At(x, y).RGBA()
+			if aR != eR || aG != eG || aB != eB || aA != eA {
+				t.Errorf("expected actual RGBA at [%d, %d] to be:\n[%d, %d, %d, %d]\nbut instead got:\n[%d, %d, %d, %d]\n", x, y, eR, eG, eB, eA, aR, aG, aB, aA)
+			}
+		}
+	}
+
+	// concurrency = true
+	actual = NearestNeighbor(src, 6, 6, true)
 
 	// compare each cells' RGBA values
 	for y := range 6 {
@@ -136,7 +151,29 @@ func TestBilinear(t *testing.T) {
 	expected.Set(2, 3, color.RGBA{113, 85, 113, 255})
 	expected.Set(3, 3, color.RGBA{141, 170, 56, 255})
 
-	actual := Bilinear(src, 6, 6)
+	// concurrency = false
+	actual := Bilinear(src, 6, 6, false)
+
+	for y := range 6 {
+		for x := range 6 {
+			aR := actual.RGBAAt(x, y).R
+			aG := actual.RGBAAt(x, y).G
+			aB := actual.RGBAAt(x, y).B
+			aA := actual.RGBAAt(x, y).A
+
+			eR := expected.RGBAAt(x, y).R
+			eG := expected.RGBAAt(x, y).G
+			eB := expected.RGBAAt(x, y).B
+			eA := expected.RGBAAt(x, y).A
+
+			if absDiff(aR, eR) > 1 || absDiff(aG, eG) > 1 || absDiff(aB, eB) > 1 || absDiff(aA, eA) > 1 {
+				t.Errorf("expected actual RGBA at [%d, %d] to be:\n[%d±1, %d±1, %d±1, %d±1]\nbut instead got:\n[%d, %d, %d, %d]\n", x, y, eR, eG, eB, eA, aR, aG, aB, aA)
+			}
+		}
+	}
+
+	// concurrency = true
+	actual = Bilinear(src, 6, 6, true)
 
 	for y := range 6 {
 		for x := range 6 {

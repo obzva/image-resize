@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"runtime"
 	"time"
 )
 
@@ -36,7 +37,7 @@ func transformCoords(x, y int, scaleW, scaleH float64, subtractOffset bool) (flo
 	return transX, transY
 }
 
-func NearestNeighbor(src *image.RGBA, w, h int) *image.RGBA {
+func NearestNeighbor(src *image.RGBA, w, h int, concurrency bool) *image.RGBA {
 	defer timeTrack(time.Now(), "NearestNeighbor")
 
 	srcRect := src.Bounds()
@@ -47,13 +48,31 @@ func NearestNeighbor(src *image.RGBA, w, h int) *image.RGBA {
 
 	res := image.NewRGBA(image.Rect(0, 0, w, h))
 
-	for y := range h {
-		for x := range w {
+	operate := func(start, end int) {
+		for ; start < end; start++ {
+			x := start % w
+			y := start / w
 			// transformed x and y
 			transX, transY := transformCoords(x, y, scaleW, scaleH, false)
 
 			res.Set(x, y, src.At(int(transX), int(transY)))
 		}
+	}
+	
+	if concurrency {
+		numCPU := runtime.NumCPU()
+		c := make(chan int, numCPU)
+		for i := range numCPU {
+			go func() {
+				operate(i*w*h/numCPU, (i+1)*w*h/numCPU)
+				c <- 1
+			}()
+		}
+		for i := 0; i < numCPU; i++ {
+			<-c
+		}
+	} else {
+		operate(0, w*h)
 	}
 
 	return res
@@ -80,7 +99,7 @@ func clamp(v float64) uint8 {
 	}
 }
 
-func Bilinear(src *image.RGBA, w, h int) *image.RGBA {
+func Bilinear(src *image.RGBA, w, h int, concurrency bool) *image.RGBA {
 	defer timeTrack(time.Now(), "Bilinear")
 
 	srcRect := src.Bounds()
@@ -92,8 +111,11 @@ func Bilinear(src *image.RGBA, w, h int) *image.RGBA {
 
 	res := image.NewRGBA(image.Rect(0, 0, w, h))
 
-	for y := range h {
-		for x := range w {
+	operate := func(start, end int) {
+		for ; start < end; start++ {
+			x := start % w
+			y := start / w
+
 			// transformed x and y
 			transX, transY := transformCoords(x, y, scaleW, scaleH, true)
 
@@ -218,27 +240,44 @@ func Bilinear(src *image.RGBA, w, h int) *image.RGBA {
 			res.Set(x, y, iC)
 		}
 	}
+
+	if concurrency {
+		numCPU := runtime.NumCPU()
+		c := make(chan int, numCPU)
+		for i := range numCPU {
+			go func() {
+				operate(i*w*h/numCPU, (i+1)*w*h/numCPU)
+				c <- 1
+			}()
+		}
+		for i := 0; i < numCPU; i++ {
+			<-c
+		}
+	} else {
+		operate(0, w*h)
+	}
+
 	return res
 }
 
 // https://en.wikipedia.org/wiki/Cubic_Hermite_spline#Interpolation_on_the_unit_interval_with_matched_derivatives_at_endpoints
-// p1: p_n-1
-// p2: p_n
-// p3: p_n+1
-// p4: p_n+2
-func catmullRomSpline(u, p1, p2, p3, p4 float64) float64 {
+// p[0]: p_n-1
+// p[1]: p_n
+// p[2]: p_n+1
+// p[3]: p_n+2
+func catmullRomSpline(u float64, p *[4]float64) float64 {
 	u2 := u * u
 	u3 := u2 * u
 
-	term1 := (-p1 + 3*p2 - 3*p3 + p4) * u3
-	term2 := (2*p1 - 5*p2 + 4*p3 - p4) * u2
-	term3 := (-p1 + p3) * u
-	term4 := 2 * p2
+	term1 := (-p[0] + 3*p[1] - 3*p[2] + p[3]) * u3
+	term2 := (2*p[0] - 5*p[1] + 4*p[2] - p[3]) * u2
+	term3 := (-p[0] + p[2]) * u
+	term4 := 2 * p[1]
 
 	return 0.5 * (term1 + term2 + term3 + term4)
 }
 
-func Bicubic(src *image.RGBA, w, h int) (*image.RGBA, error) {
+func Bicubic(src *image.RGBA, w, h int, concurrency bool) (*image.RGBA, error) {
 	defer timeTrack(time.Now(), "Bicubic")
 
 	srcRect := src.Bounds()
@@ -255,8 +294,11 @@ func Bicubic(src *image.RGBA, w, h int) (*image.RGBA, error) {
 
 	res := image.NewRGBA(image.Rect(0, 0, w, h))
 
-	for y := range h {
-		for x := range w {
+	operate := func(start, end int) {
+		for ; start < end; start++ {
+			x := start % w
+			y := start / w
+
 			// transformed x and y
 			transX, transY := transformCoords(x, y, scaleW, scaleH, true)
 
@@ -319,10 +361,10 @@ func Bicubic(src *image.RGBA, w, h int) (*image.RGBA, error) {
 					pA[i] = float64(src.RGBAAt(nX, intY-1+i).A)
 				}
 
-				iR := clamp(catmullRomSpline(fractionY, pR[0], pR[1], pR[2], pR[3]))
-				iG := clamp(catmullRomSpline(fractionY, pG[0], pG[1], pG[2], pG[3]))
-				iB := clamp(catmullRomSpline(fractionY, pB[0], pB[1], pB[2], pB[3]))
-				iA := clamp(catmullRomSpline(fractionY, pA[0], pA[1], pA[2], pA[3]))
+				iR := clamp(catmullRomSpline(fractionY, &pR))
+				iG := clamp(catmullRomSpline(fractionY, &pG))
+				iB := clamp(catmullRomSpline(fractionY, &pB))
+				iA := clamp(catmullRomSpline(fractionY, &pA))
 
 				iC = color.RGBA{iR, iG, iB, iA}
 			} else if outY { // use only x-axis
@@ -352,10 +394,10 @@ func Bicubic(src *image.RGBA, w, h int) (*image.RGBA, error) {
 					pA[i] = float64(src.RGBAAt(intX-1+i, nY).A)
 				}
 
-				iR := clamp(catmullRomSpline(fractionX, pR[0], pR[1], pR[2], pR[3]))
-				iG := clamp(catmullRomSpline(fractionX, pG[0], pG[1], pG[2], pG[3]))
-				iB := clamp(catmullRomSpline(fractionX, pB[0], pB[1], pB[2], pB[3]))
-				iA := clamp(catmullRomSpline(fractionX, pA[0], pA[1], pA[2], pA[3]))
+				iR := clamp(catmullRomSpline(fractionX, &pR))
+				iG := clamp(catmullRomSpline(fractionX, &pG))
+				iB := clamp(catmullRomSpline(fractionX, &pB))
+				iA := clamp(catmullRomSpline(fractionX, &pA))
 
 				iC = color.RGBA{iR, iG, iB, iA}
 			} else { // use both two axes, x first y later
@@ -380,21 +422,38 @@ func Bicubic(src *image.RGBA, w, h int) (*image.RGBA, error) {
 						pA[i][j] = float64(src.RGBAAt(intX-1+j, intY-1+i).A)
 					}
 
-					tmpR[i] = catmullRomSpline(fractionX, pR[i][0], pR[i][1], pR[i][2], pR[i][3])
-					tmpG[i] = catmullRomSpline(fractionX, pG[i][0], pG[i][1], pG[i][2], pG[i][3])
-					tmpB[i] = catmullRomSpline(fractionX, pB[i][0], pB[i][1], pB[i][2], pB[i][3])
-					tmpA[i] = catmullRomSpline(fractionX, pA[i][0], pA[i][1], pA[i][2], pA[i][3])
+					tmpR[i] = catmullRomSpline(fractionX, &pR[i])
+					tmpG[i] = catmullRomSpline(fractionX, &pG[i])
+					tmpB[i] = catmullRomSpline(fractionX, &pB[i])
+					tmpA[i] = catmullRomSpline(fractionX, &pA[i])
 				}
 
-				iR := clamp(catmullRomSpline(fractionY, tmpR[0], tmpR[1], tmpR[2], tmpR[3]))
-				iG := clamp(catmullRomSpline(fractionY, tmpG[0], tmpG[1], tmpG[2], tmpG[3]))
-				iB := clamp(catmullRomSpline(fractionY, tmpB[0], tmpB[1], tmpB[2], tmpB[3]))
-				iA := clamp(catmullRomSpline(fractionY, tmpA[0], tmpA[1], tmpA[2], tmpA[3]))
+				iR := clamp(catmullRomSpline(fractionY, &tmpR))
+				iG := clamp(catmullRomSpline(fractionY, &tmpG))
+				iB := clamp(catmullRomSpline(fractionY, &tmpB))
+				iA := clamp(catmullRomSpline(fractionY, &tmpA))
 
 				iC = color.RGBA{iR, iG, iB, iA}
 			}
 			res.Set(x, y, iC)
 		}
 	}
+
+	if concurrency {
+		numCPU := runtime.NumCPU()
+		c := make(chan int, numCPU)
+		for i := range numCPU {
+			go func() {
+				operate(i*w*h/numCPU, (i+1)*w*h/numCPU)
+				c <- 1
+			}()
+		}
+		for i := 0; i < numCPU; i++ {
+			<-c
+		}
+	} else {
+		operate(0, w*h)
+	}
+
 	return res, nil
 }
