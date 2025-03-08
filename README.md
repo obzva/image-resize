@@ -59,11 +59,11 @@ output image using bicubic interpolation (1000 x 600)
 ```
 image-resize/
 ├── main.go                    # Entry point for CLI application
-├── imageio/
-│   └── imageio.go             # Handles image file I/O operations
-└── interpolation/
-    └── interpolation.go       # Implements image processing algorithms
-    └── interpolation_test.go  # Tests nearest-neighbor and bilinear methods 
+├── imageprocessor/
+│   └── imageprocessor.go      # Handles file I/O and manages the image processing workflow
+└── interpolator/
+    └── interpolator.go        # Implements interpolation algorithms (nearestneighbor, bilinear, bicubic)
+    └── interpolator_test.go   # Tests nearest-neighbor and bilinear methods
 ```
 
 ## License
