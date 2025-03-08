@@ -15,16 +15,16 @@ import (
 //   - nearestneighbor
 //   - bilinear
 //   - bicubic
-func New(src *image.RGBA, w, h int, method string) Interpolator {
+func New(src *image.NRGBA, w, h int, method string) Interpolator {
 	var interpolator Interpolator
 
 	switch method {
 	case "nearestneighbor":
-		interpolator = &NearestNeighbor{src, image.NewRGBA(image.Rect(0, 0, w, h))}
+		interpolator = &NearestNeighbor{src, image.NewNRGBA(image.Rect(0, 0, w, h))}
 	case "bilinear":
-		interpolator = &Bilinear{src, image.NewRGBA(image.Rect(0, 0, w, h))}
+		interpolator = &Bilinear{src, image.NewNRGBA(image.Rect(0, 0, w, h))}
 	case "bicubic":
-		interpolator = &Bicubic{src, image.NewRGBA(image.Rect(0, 0, w, h))}
+		interpolator = &Bicubic{src, image.NewNRGBA(image.Rect(0, 0, w, h))}
 	default:
 		log.Fatal("wrong interpolation method passed")
 	}
@@ -33,11 +33,11 @@ func New(src *image.RGBA, w, h int, method string) Interpolator {
 }
 
 type Interpolator interface {
-	Interpolate(concurrency bool) *image.RGBA
+	Interpolate(concurrency bool) *image.NRGBA
 }
 
 type NearestNeighbor struct {
-	input, output *image.RGBA
+	input, output *image.NRGBA
 }
 
 // returns (x-axis scale, y-axis scale) = ((output width / input width), (output height / input height))
@@ -71,7 +71,7 @@ func (nn *NearestNeighbor) operate(start, end int) {
 	}
 }
 
-func (nn *NearestNeighbor) Interpolate(concurrency bool) *image.RGBA {
+func (nn *NearestNeighbor) Interpolate(concurrency bool) *image.NRGBA {
 	funcName := "Nearest neighbor"
 	if concurrency {
 		funcName += " with concurrency"
@@ -104,7 +104,7 @@ func (nn *NearestNeighbor) Interpolate(concurrency bool) *image.RGBA {
 }
 
 type Bilinear struct {
-	input, output *image.RGBA
+	input, output *image.NRGBA
 }
 
 // returns (x-axis scale, y-axis scale) = ((output width / input width), (output height / input height))
@@ -157,7 +157,7 @@ func (bl *Bilinear) operate(start, end int) {
 		outX := tX < 0 || tX > float64(iW-1)
 		outY := tY < 0 || tY > float64(iH-1)
 
-		var iC color.RGBA
+		var iC color.NRGBA
 
 		// meaning of prefix
 		// n: nearest (largest integer value no larger than ...)
@@ -183,7 +183,7 @@ func (bl *Bilinear) operate(start, end int) {
 				nY = iH - 1
 			}
 
-			iC = bl.input.RGBAAt(nX, nY)
+			iC = bl.input.NRGBAAt(nX, nY)
 		} else if outX { // use two surrounding points (only y-axis)
 			var nX float64
 			if tX < 0 {
@@ -200,7 +200,7 @@ func (bl *Bilinear) operate(start, end int) {
 			var pR, pG, pB, pA [2]float64
 
 			for i := range 2 {
-				pRGBA := bl.input.RGBAAt(int(nX), int(nY)+i)
+				pRGBA := bl.input.NRGBAAt(int(nX), int(nY)+i)
 				pR[i] = float64(pRGBA.R)
 				pG[i] = float64(pRGBA.G)
 				pB[i] = float64(pRGBA.B)
@@ -209,7 +209,7 @@ func (bl *Bilinear) operate(start, end int) {
 
 			iR, iG, iB, iA := bl.internalDivision(&pR, &pG, &pB, &pA, nY, tY)
 
-			iC = color.RGBA{clamp(iR), clamp(iG), clamp(iB), clamp(iA)}
+			iC = color.NRGBA{clamp(iR), clamp(iG), clamp(iB), clamp(iA)}
 		} else if outY { // use two surrounding points (only x-axis)
 			var nY float64
 
@@ -227,7 +227,7 @@ func (bl *Bilinear) operate(start, end int) {
 			var pR, pG, pB, pA [2]float64
 
 			for i := range 2 {
-				pRGBA := bl.input.RGBAAt(int(nX)+i, int(nY))
+				pRGBA := bl.input.NRGBAAt(int(nX)+i, int(nY))
 				pR[i] = float64(pRGBA.R)
 				pG[i] = float64(pRGBA.G)
 				pB[i] = float64(pRGBA.B)
@@ -236,7 +236,7 @@ func (bl *Bilinear) operate(start, end int) {
 
 			iR, iG, iB, iA := bl.internalDivision(&pR, &pG, &pB, &pA, nX, tX)
 
-			iC = color.RGBA{clamp(iR), clamp(iG), clamp(iB), clamp(iA)}
+			iC = color.NRGBA{clamp(iR), clamp(iG), clamp(iB), clamp(iA)}
 		} else { // use four surrounding points (both x-axis and y-axis)
 			nX := math.Floor(tX)
 			nY := math.Floor(tY)
@@ -255,7 +255,7 @@ func (bl *Bilinear) operate(start, end int) {
 
 			for i := range 2 {
 				for j := range 2 {
-					pRGBA := bl.input.RGBAAt(int(nX)+j, int(nY)+i)
+					pRGBA := bl.input.NRGBAAt(int(nX)+j, int(nY)+i)
 					pR[i][j] = float64(pRGBA.R)
 					pG[i][j] = float64(pRGBA.G)
 					pB[i][j] = float64(pRGBA.B)
@@ -266,13 +266,13 @@ func (bl *Bilinear) operate(start, end int) {
 
 			iR, iG, iB, iA := bl.internalDivision(&tmpR, &tmpG, &tmpB, &tmpA, nY, tY)
 
-			iC = color.RGBA{clamp(iR), clamp(iG), clamp(iB), clamp(iA)}
+			iC = color.NRGBA{clamp(iR), clamp(iG), clamp(iB), clamp(iA)}
 		}
 		bl.output.Set(x, y, iC)
 	}
 }
 
-func (bl *Bilinear) Interpolate(concurrency bool) *image.RGBA {
+func (bl *Bilinear) Interpolate(concurrency bool) *image.NRGBA {
 	funcName := "Bilinear"
 	if concurrency {
 		funcName += " with concurrency"
@@ -305,7 +305,7 @@ func (bl *Bilinear) Interpolate(concurrency bool) *image.RGBA {
 }
 
 type Bicubic struct {
-	input, output *image.RGBA
+	input, output *image.NRGBA
 }
 
 // returns (x-axis scale, y-axis scale) = ((output width / input width), (output height / input height))
@@ -366,7 +366,7 @@ func (bc *Bicubic) operate(start, end int) {
 		outX := tX < 1 || tX > float64(iW-2)
 		outY := tY < 1 || tY > float64(iH-2)
 
-		var iC color.RGBA
+		var iC color.NRGBA
 
 		// use just one nearest surrounding point
 		if outX && outY {
@@ -393,7 +393,7 @@ func (bc *Bicubic) operate(start, end int) {
 				nY = iH - 1
 			}
 
-			iC = bc.input.RGBAAt(nX, nY)
+			iC = bc.input.NRGBAAt(nX, nY)
 		} else if outX { // use only y-axis
 			var nX int
 
@@ -415,10 +415,10 @@ func (bc *Bicubic) operate(start, end int) {
 			var pR, pG, pB, pA [4]float64
 
 			for i := range 4 {
-				pR[i] = float64(bc.input.RGBAAt(nX, intY-1+i).R)
-				pG[i] = float64(bc.input.RGBAAt(nX, intY-1+i).G)
-				pB[i] = float64(bc.input.RGBAAt(nX, intY-1+i).B)
-				pA[i] = float64(bc.input.RGBAAt(nX, intY-1+i).A)
+				pR[i] = float64(bc.input.NRGBAAt(nX, intY-1+i).R)
+				pG[i] = float64(bc.input.NRGBAAt(nX, intY-1+i).G)
+				pB[i] = float64(bc.input.NRGBAAt(nX, intY-1+i).B)
+				pA[i] = float64(bc.input.NRGBAAt(nX, intY-1+i).A)
 			}
 
 			iR := clamp(bc.catmullRomSpline(fractionY, &pR))
@@ -426,7 +426,7 @@ func (bc *Bicubic) operate(start, end int) {
 			iB := clamp(bc.catmullRomSpline(fractionY, &pB))
 			iA := clamp(bc.catmullRomSpline(fractionY, &pA))
 
-			iC = color.RGBA{iR, iG, iB, iA}
+			iC = color.NRGBA{iR, iG, iB, iA}
 		} else if outY { // use only x-axis
 			var nY int
 
@@ -448,10 +448,10 @@ func (bc *Bicubic) operate(start, end int) {
 			var pR, pG, pB, pA [4]float64
 
 			for i := range 4 {
-				pR[i] = float64(bc.input.RGBAAt(intX-1+i, nY).R)
-				pG[i] = float64(bc.input.RGBAAt(intX-1+i, nY).G)
-				pB[i] = float64(bc.input.RGBAAt(intX-1+i, nY).B)
-				pA[i] = float64(bc.input.RGBAAt(intX-1+i, nY).A)
+				pR[i] = float64(bc.input.NRGBAAt(intX-1+i, nY).R)
+				pG[i] = float64(bc.input.NRGBAAt(intX-1+i, nY).G)
+				pB[i] = float64(bc.input.NRGBAAt(intX-1+i, nY).B)
+				pA[i] = float64(bc.input.NRGBAAt(intX-1+i, nY).A)
 			}
 
 			iR := clamp(bc.catmullRomSpline(fractionX, &pR))
@@ -459,7 +459,7 @@ func (bc *Bicubic) operate(start, end int) {
 			iB := clamp(bc.catmullRomSpline(fractionX, &pB))
 			iA := clamp(bc.catmullRomSpline(fractionX, &pA))
 
-			iC = color.RGBA{iR, iG, iB, iA}
+			iC = color.NRGBA{iR, iG, iB, iA}
 		} else { // use both two axes, x first y later
 			floorX := math.Floor(tX)
 			fractionX := tX - floorX
@@ -476,10 +476,10 @@ func (bc *Bicubic) operate(start, end int) {
 
 			for i := range 4 {
 				for j := range 4 {
-					pR[i][j] = float64(bc.input.RGBAAt(intX-1+j, intY-1+i).R)
-					pG[i][j] = float64(bc.input.RGBAAt(intX-1+j, intY-1+i).G)
-					pB[i][j] = float64(bc.input.RGBAAt(intX-1+j, intY-1+i).B)
-					pA[i][j] = float64(bc.input.RGBAAt(intX-1+j, intY-1+i).A)
+					pR[i][j] = float64(bc.input.NRGBAAt(intX-1+j, intY-1+i).R)
+					pG[i][j] = float64(bc.input.NRGBAAt(intX-1+j, intY-1+i).G)
+					pB[i][j] = float64(bc.input.NRGBAAt(intX-1+j, intY-1+i).B)
+					pA[i][j] = float64(bc.input.NRGBAAt(intX-1+j, intY-1+i).A)
 				}
 
 				tmpR[i] = bc.catmullRomSpline(fractionX, &pR[i])
@@ -493,13 +493,13 @@ func (bc *Bicubic) operate(start, end int) {
 			iB := clamp(bc.catmullRomSpline(fractionY, &tmpB))
 			iA := clamp(bc.catmullRomSpline(fractionY, &tmpA))
 
-			iC = color.RGBA{iR, iG, iB, iA}
+			iC = color.NRGBA{iR, iG, iB, iA}
 		}
 		bc.output.Set(x, y, iC)
 	}
 }
 
-func (bc *Bicubic) Interpolate(concurrency bool) *image.RGBA {
+func (bc *Bicubic) Interpolate(concurrency bool) *image.NRGBA {
 	funcName := "Bicubic"
 	if concurrency {
 		funcName += " with concurrency"

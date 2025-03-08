@@ -17,7 +17,7 @@ import (
 type ImageProcessor struct {
 	path         string      // path to the input file
 	iExt         string      // "jpeg" | "png" extension of the input file, only jpeg(jpg), png are available
-	src          *image.RGBA // in-memory input image converted to *image.RGBA
+	src          *image.NRGBA // in-memory input image converted to *image.NRGBA
 	w, h         int         // width and height of output image file
 	name         string      // name of output image file
 	oExt         string      // "jpeg" | "png" extension of the output file, only jpeg(jpg), png are available
@@ -25,7 +25,7 @@ type ImageProcessor struct {
 	interpolator interpolator.Interpolator
 }
 
-// readImageFile the input image and then convert it into *image.RGBA
+// readImageFile the input image and then convert it into *image.NRGBA
 // after that, set that into ip.src
 func (ip *ImageProcessor) readImageFile() error {
 	// read the image from file path
@@ -56,9 +56,9 @@ func (ip *ImageProcessor) readImageFile() error {
 	iRect := i.Bounds()
 	iW, iH := iRect.Size().X, iRect.Size().Y
 
-	// convert image into more useful form (RGBA interface)
+	// convert image into more useful form *image.NRGBA
 	// so that we can pass it to draw.Draw
-	rgba := image.NewRGBA(image.Rect(0, 0, iW, iH))
+	rgba := image.NewNRGBA(image.Rect(0, 0, iW, iH))
 	draw.Draw(rgba, iRect, i, iRect.Min, draw.Src)
 
 	ip.src = rgba
