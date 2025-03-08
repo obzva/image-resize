@@ -75,7 +75,7 @@ func (ip *ImageProcessor) CreateImageFile() error {
 	p := ip.interpolator.Interpolate(ip.concurrency)
 
 	if ip.oExt == "jpeg" {
-		if err := jpeg.Encode(f, p, &jpeg.Options{Quality: 100}); err != nil {
+		if err := jpeg.Encode(f, p, nil); err != nil {
 			return err
 		}
 	} else {
