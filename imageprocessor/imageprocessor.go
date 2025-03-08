@@ -1,7 +1,6 @@
 package imageprocessor
 
 import (
-	"errors"
 	"image"
 	"image/draw"
 	"image/jpeg"
@@ -15,12 +14,12 @@ import (
 )
 
 type ImageProcessor struct {
-	path         string      // path to the input file
-	iExt         string      // "jpeg" | "png" extension of the input file, only jpeg(jpg), png are available
+	path         string       // path to the input file
+	iExt         string       // "jpeg" | "png" extension of the input file, only jpeg(jpg), png are available
 	src          *image.NRGBA // in-memory input image converted to *image.NRGBA
-	w, h         int         // width and height of output image file
-	name         string      // name of output image file
-	oExt         string      // "jpeg" | "png" extension of the output file, only jpeg(jpg), png are available
+	w, h         int          // width and height of output image file
+	name         string       // name of output image file
+	oExt         string       // "jpeg" | "png" extension of the output file, only jpeg(jpg), png are available
 	concurrency  bool
 	interpolator interpolator.Interpolator
 }
@@ -31,7 +30,7 @@ func (ip *ImageProcessor) readImageFile() error {
 	// read the image from file path
 	r, err := os.Open(ip.path)
 	if err != nil {
-		return errors.New("error occurred when opening the image file")
+		return err
 	}
 	defer r.Close()
 
@@ -40,14 +39,14 @@ func (ip *ImageProcessor) readImageFile() error {
 	if ip.iExt == "jpeg" {
 		d, err := jpeg.Decode(r)
 		if err != nil {
-			return errors.New("error occurred when decoding the image")
+			return err
 		}
 		i = d
 
 	} else {
 		d, err := png.Decode(r)
 		if err != nil {
-			return errors.New("error occurred when decoding the image")
+			return err
 		}
 		i = d
 	}
@@ -69,7 +68,7 @@ func (ip *ImageProcessor) readImageFile() error {
 func (ip *ImageProcessor) CreateImageFile() error {
 	f, err := os.Create(ip.name)
 	if err != nil {
-		return errors.New("error occurred when creating output file")
+		return err
 	}
 	defer f.Close()
 
@@ -143,7 +142,7 @@ func New(path string, w, h int, method string, concurrency bool, name string) *I
 func extCheck(s string) string {
 	re, err := regexp.Compile(`\.(jpe?g|png)$`)
 	if err != nil {
-		log.Fatal("error occurred while compiling regexp")
+		log.Fatal(err)
 	}
 	matches := re.FindStringSubmatch(s)
 	if matches == nil {
