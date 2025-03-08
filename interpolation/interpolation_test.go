@@ -41,8 +41,10 @@ func TestNearestNeighbor(t *testing.T) {
 		}
 	}
 
+	interpolator := Init(src, 6, 6, "nearestneighbor")
+
 	// concurrency = false
-	actual := NearestNeighbor(src, 6, 6, false)
+	actual := interpolator.Interpolate(false)
 
 	// compare each cells' RGBA values
 	for y := range 6 {
@@ -56,7 +58,7 @@ func TestNearestNeighbor(t *testing.T) {
 	}
 
 	// concurrency = true
-	actual = NearestNeighbor(src, 6, 6, true)
+	actual = interpolator.Interpolate(true)
 
 	// compare each cells' RGBA values
 	for y := range 6 {
@@ -151,8 +153,10 @@ func TestBilinear(t *testing.T) {
 	expected.Set(2, 3, color.RGBA{113, 85, 113, 255})
 	expected.Set(3, 3, color.RGBA{141, 170, 56, 255})
 
+	interpolator := Init(src, 6, 6, "bilinear")
+
 	// concurrency = false
-	actual := Bilinear(src, 6, 6, false)
+	actual := interpolator.Interpolate(false)
 
 	for y := range 6 {
 		for x := range 6 {
@@ -173,7 +177,7 @@ func TestBilinear(t *testing.T) {
 	}
 
 	// concurrency = true
-	actual = Bilinear(src, 6, 6, true)
+	actual = interpolator.Interpolate(true)
 
 	for y := range 6 {
 		for x := range 6 {

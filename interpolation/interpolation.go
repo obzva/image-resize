@@ -4,268 +4,340 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"log"
 	"math"
 	"runtime"
 	"time"
 )
 
-func timeTrack(start time.Time, funcName string) {
-	elapsed := time.Since(start)
-	fmt.Printf("%s interpolation took %v to run\n", funcName, elapsed)
-}
+// initialize Interpolator
+// available methods are
+//   - nearestneighbor
+//   - bilinear
+//   - bicubic
+func Init(src *image.RGBA, w, h int, method string) Interpolator {
+	var interpolator Interpolator
 
-func getOffset(k float64) float64 {
-	return (k - 1) / (2 * k)
-}
-
-// transform result rectangle's coordinate
-// scale it down and
-// if subtractOffset is true then
-// subtract offset from it for convinience (its effect is as same as linearly movin original coordinates)
-func transformCoords(x, y int, scaleW, scaleH float64, subtractOffset bool) (float64, float64) {
-	offsetX := getOffset(scaleW)
-	offsetY := getOffset(scaleH)
-
-	transX := float64(x) / scaleW
-	transY := float64(y) / scaleH
-
-	if subtractOffset {
-		transX -= offsetX
-		transY -= offsetY
+	switch method {
+	case "nearestneighbor":
+		interpolator = &NearestNeighbor{src, image.NewRGBA(image.Rect(0, 0, w, h))}
+	case "bilinear":
+		interpolator = &Bilinear{src, image.NewRGBA(image.Rect(0, 0, w, h))}
+	case "bicubic":
+		interpolator = &Bicubic{src, image.NewRGBA(image.Rect(0, 0, w, h))}
+	default:
+		log.Fatal("wrong interpolation method passed")
 	}
 
-	return transX, transY
+	return interpolator
 }
 
-func NearestNeighbor(src *image.RGBA, w, h int, concurrency bool) *image.RGBA {
-	defer timeTrack(time.Now(), "NearestNeighbor")
+type Interpolator interface {
+	Interpolate(concurrency bool) *image.RGBA
+}
 
-	srcRect := src.Bounds()
-	srcW, srcH := srcRect.Dx(), srcRect.Dy()
+type NearestNeighbor struct {
+	input, output *image.RGBA
+}
 
-	scaleW := float64(w) / float64(srcW)
-	scaleH := float64(h) / float64(srcH)
+// returns (x-axis scale, y-axis scale) = ((output width / input width), (output height / input height))
+func (nn *NearestNeighbor) getScale() (scaleX float64, scaleY float64) {
+	iW := nn.input.Bounds().Dx()
+	iH := nn.input.Bounds().Dy()
 
-	res := image.NewRGBA(image.Rect(0, 0, w, h))
+	oW := nn.output.Bounds().Dx()
+	oH := nn.output.Bounds().Dy()
 
-	operate := func(start, end int) {
-		for ; start < end; start++ {
-			x := start % w
-			y := start / w
-			// transformed x and y
-			transX, transY := transformCoords(x, y, scaleW, scaleH, false)
+	return float64(oW) / float64(iW), float64(oH) / float64(iH)
+}
 
-			res.Set(x, y, src.At(int(transX), int(transY)))
-		}
+// converts coordinates from output space to input space
+func (nn *NearestNeighbor) transformCoords(x, y int) (tX float64, tY float64) {
+	scaleX, scaleY := nn.getScale()
+
+	return float64(x) / scaleX, float64(y) / scaleY
+}
+
+func (nn *NearestNeighbor) operate(start, end int) {
+	oW := nn.output.Bounds().Dx()
+
+	for ; start < end; start++ {
+		x := start % oW
+		y := start / oW
+
+		tX, tY := nn.transformCoords(x, y)
+
+		nn.output.Set(x, y, nn.input.At(int(tX), int(tY)))
 	}
-	
+}
+
+func (nn *NearestNeighbor) Interpolate(concurrency bool) *image.RGBA {
+	funcName := "Nearest neighbor"
+	if concurrency {
+		funcName += " with concurrency"
+	}
+	defer timeTrack(time.Now(), funcName)
+
+	oW := nn.output.Bounds().Dx()
+	oH := nn.output.Bounds().Dy()
+
 	if concurrency {
 		numCPU := runtime.NumCPU()
 		c := make(chan int, numCPU)
+
 		for i := range numCPU {
 			go func() {
-				operate(i*w*h/numCPU, (i+1)*w*h/numCPU)
+				nn.operate(i*oW*oH/numCPU, (i+1)*oW*oH/numCPU)
 				c <- 1
 			}()
 		}
+		// drain the channel
 		for i := 0; i < numCPU; i++ {
 			<-c
 		}
+		// all done
 	} else {
-		operate(0, w*h)
+		nn.operate(0, oW*oH)
 	}
 
-	return res
+	return nn.output
 }
 
-// p*: two surrounding points' * values
-// nv: integer part of v
-func internalDivision(pR, pG, pB, pA *[2]float64, nv, v float64) (r float64, g float64, b float64, a float64) {
-	r = (nv+1-v)*float64(pR[0]) + (v-nv)*float64(pR[1])
-	g = (nv+1-v)*float64(pG[0]) + (v-nv)*float64(pG[1])
-	b = (nv+1-v)*float64(pB[0]) + (v-nv)*float64(pB[1])
-	a = (nv+1-v)*float64(pA[0]) + (v-nv)*float64(pA[1])
+type Bilinear struct {
+	input, output *image.RGBA
+}
+
+// returns (x-axis scale, y-axis scale) = ((output width / input width), (output height / input height))
+func (bl *Bilinear) getScale() (scaleX float64, scaleY float64) {
+	iW := bl.input.Bounds().Dx()
+	iH := bl.input.Bounds().Dy()
+
+	oW := bl.output.Bounds().Dx()
+	oH := bl.output.Bounds().Dy()
+
+	return float64(oW) / float64(iW), float64(oH) / float64(iH)
+}
+
+// converts coordinates from output space to input space
+func (bl *Bilinear) transformCoords(x, y int) (tX float64, tY float64) {
+	scaleX, scaleY := bl.getScale()
+
+	offsetX := getOffset(scaleX)
+	offsetY := getOffset(scaleY)
+
+	return float64(x)/scaleX - offsetX, float64(y)/scaleY - offsetY
+}
+
+// calculates the weighted average of two points(nV and nV+1) for each color channel (RGBA) about v
+// pR, pG, pB, pA: color values at two points (index 0: color value of nV, index 1: color value of nV+1)
+// nV: largest integer value no larger than v
+func (bl *Bilinear) internalDivision(pR, pG, pB, pA *[2]float64, nV, v float64) (r float64, g float64, b float64, a float64) {
+	r = (nV+1-v)*float64(pR[0]) + (v-nV)*float64(pR[1])
+	g = (nV+1-v)*float64(pG[0]) + (v-nV)*float64(pG[1])
+	b = (nV+1-v)*float64(pB[0]) + (v-nV)*float64(pB[1])
+	a = (nV+1-v)*float64(pA[0]) + (v-nV)*float64(pA[1])
 
 	return r, g, b, a
 }
 
-func clamp(v float64) uint8 {
-	if v > 255 { // overshoot
-		return 255
-	} else if v < 0 { // undershoot
-		return 0
-	} else {
-		return uint8(math.Round(v))
+func (bl *Bilinear) operate(start, end int) {
+	iW := bl.input.Bounds().Dx()
+	iH := bl.input.Bounds().Dy()
+
+	oW := bl.output.Bounds().Dx()
+
+	for ; start < end; start++ {
+		x := start % oW
+		y := start / oW
+
+		// transformed x and y
+		tX, tY := bl.transformCoords(x, y)
+
+		// boundary check
+		outX := tX < 0 || tX > float64(iW-1)
+		outY := tY < 0 || tY > float64(iH-1)
+
+		var iC color.RGBA
+
+		// meaning of prefix
+		// n: nearest (largest integer value no larger than ...)
+		// l: left
+		// r: right
+		// t: top
+		// b: bottom
+
+		// use just one nearest surrounding point
+		if outX && outY {
+			var nX int
+			var nY int
+
+			if tX < 0 {
+				nX = 0
+			} else {
+				nX = iW - 1
+			}
+
+			if tY < 0 {
+				nY = 0
+			} else {
+				nY = iH - 1
+			}
+
+			iC = bl.input.RGBAAt(nX, nY)
+		} else if outX { // use two surrounding points (only y-axis)
+			var nX float64
+			if tX < 0 {
+				nX = 0
+			} else {
+				nX = float64(iW - 1)
+			}
+
+			nY := math.Floor(tY)
+
+			// color values at two points (nX, nY) and (nX, nY+1) for each color channel (RGBA)
+			// index 0: color values at (nX, nY)
+			// index 1: color values at (nX, nY+1)
+			var pR, pG, pB, pA [2]float64
+
+			for i := range 2 {
+				pRGBA := bl.input.RGBAAt(int(nX), int(nY)+i)
+				pR[i] = float64(pRGBA.R)
+				pG[i] = float64(pRGBA.G)
+				pB[i] = float64(pRGBA.B)
+				pA[i] = float64(pRGBA.A)
+			}
+
+			iR, iG, iB, iA := bl.internalDivision(&pR, &pG, &pB, &pA, nY, tY)
+
+			iC = color.RGBA{clamp(iR), clamp(iG), clamp(iB), clamp(iA)}
+		} else if outY { // use two surrounding points (only x-axis)
+			var nY float64
+
+			if tY < 0 {
+				nY = 0
+			} else {
+				nY = float64(iH - 1)
+			}
+
+			nX := math.Floor(tX)
+
+			// color values at two points (nX, nY) and (nX+1, nY) for each color channel (RGBA)
+			// index 0: color values at (nX, nY)
+			// index 1: color values at (nX+1, nY)
+			var pR, pG, pB, pA [2]float64
+
+			for i := range 2 {
+				pRGBA := bl.input.RGBAAt(int(nX)+i, int(nY))
+				pR[i] = float64(pRGBA.R)
+				pG[i] = float64(pRGBA.G)
+				pB[i] = float64(pRGBA.B)
+				pA[i] = float64(pRGBA.A)
+			}
+
+			iR, iG, iB, iA := bl.internalDivision(&pR, &pG, &pB, &pA, nX, tX)
+
+			iC = color.RGBA{clamp(iR), clamp(iG), clamp(iB), clamp(iA)}
+		} else { // use four surrounding points (both x-axis and y-axis)
+			nX := math.Floor(tX)
+			nY := math.Floor(tY)
+
+			// color values at four points (nX, nY), (nX+1, nY), (nX, nY+1) and (nX+1, nY+1) for each color channel (RGBA)
+			// index [0][0]: color values at (nX, nY)
+			// index [0][1]: color values at (nX+1, nY)
+			// index [1][0]: color values at (nX, nY+1)
+			// index [1][1]: color values at (nX+1, nY+1)
+			var pR, pG, pB, pA [2][2]float64
+
+			// temporarily saved color values got from internal division on x-axis
+			// index 0: values got from internal division on y=nY
+			// index 1: values got from internal division on y=nY+1
+			var tmpR, tmpG, tmpB, tmpA [2]float64
+
+			for i := range 2 {
+				for j := range 2 {
+					pRGBA := bl.input.RGBAAt(int(nX)+j, int(nY)+i)
+					pR[i][j] = float64(pRGBA.R)
+					pG[i][j] = float64(pRGBA.G)
+					pB[i][j] = float64(pRGBA.B)
+					pA[i][j] = float64(pRGBA.A)
+				}
+				tmpR[i], tmpG[i], tmpB[i], tmpA[i] = bl.internalDivision(&pR[i], &pG[i], &pB[i], &pA[i], nX, tX)
+			}
+
+			iR, iG, iB, iA := bl.internalDivision(&tmpR, &tmpG, &tmpB, &tmpA, nY, tY)
+
+			iC = color.RGBA{clamp(iR), clamp(iG), clamp(iB), clamp(iA)}
+		}
+		bl.output.Set(x, y, iC)
 	}
 }
 
-func Bilinear(src *image.RGBA, w, h int, concurrency bool) *image.RGBA {
-	defer timeTrack(time.Now(), "Bilinear")
-
-	srcRect := src.Bounds()
-	srcW := srcRect.Dx()
-	srcH := srcRect.Dy()
-
-	scaleW := float64(w) / float64(srcW)
-	scaleH := float64(h) / float64(srcH)
-
-	res := image.NewRGBA(image.Rect(0, 0, w, h))
-
-	operate := func(start, end int) {
-		for ; start < end; start++ {
-			x := start % w
-			y := start / w
-
-			// transformed x and y
-			transX, transY := transformCoords(x, y, scaleW, scaleH, true)
-
-			// boundary check
-			outX := transX < 0 || transX > float64(srcW-1)
-			outY := transY < 0 || transY > float64(srcH-1)
-
-			var iC color.RGBA
-
-			// n: nearest
-			// l: left
-			// r: right
-			// t: top
-			// b: bottom
-			// W: weight
-
-			// use just one nearest surrounding point
-			if outX && outY {
-				var nX int
-				var nY int
-
-				if transX < 0 {
-					nX = 0
-				} else {
-					nX = srcW - 1
-				}
-
-				if transY < 0 {
-					nY = 0
-				} else {
-					nY = srcH - 1
-				}
-
-				iC = src.RGBAAt(nX, nY)
-			} else if outX { // use two surrounding points (only y-axis)
-				var nX float64
-				if transX < 0 {
-					nX = 0
-				} else {
-					nX = float64(srcW - 1)
-				}
-
-				nY := math.Floor(transY)
-
-				// surrounding points' r/g/b/a values
-				// p*[0] <- * value of [nX, nY] at src
-				// p*[1] <- * value of [nX, nY + 1] at src
-				var pR, pG, pB, pA [2]float64
-
-				for i := range 2 {
-					pRGBA := src.RGBAAt(int(nX), int(nY)+i)
-					pR[i] = float64(pRGBA.R)
-					pG[i] = float64(pRGBA.G)
-					pB[i] = float64(pRGBA.B)
-					pA[i] = float64(pRGBA.A)
-				}
-
-				iR, iG, iB, iA := internalDivision(&pR, &pG, &pB, &pA, nY, transY)
-				// use round to dodge edge cases like:
-				// uint8(1.99999999999) -> 1
-				iC = color.RGBA{clamp(iR), clamp(iG), clamp(iB), clamp(iA)}
-			} else if outY { // use two surrounding points (only x-axis)
-				var nY float64
-
-				if transY < 0 {
-					nY = 0
-				} else {
-					nY = float64(srcH - 1)
-				}
-
-				nX := math.Floor(transX)
-
-				// surrounding points' r/g/b/a values
-				// p*[0] <- * value of [nX, nY] at src
-				// p*[1] <- * value of [nX + 1, nY] at src
-				var pR, pG, pB, pA [2]float64
-
-				for i := range 2 {
-					pRGBA := src.RGBAAt(int(nX)+i, int(nY))
-					pR[i] = float64(pRGBA.R)
-					pG[i] = float64(pRGBA.G)
-					pB[i] = float64(pRGBA.B)
-					pA[i] = float64(pRGBA.A)
-				}
-
-				iR, iG, iB, iA := internalDivision(&pR, &pG, &pB, &pA, nX, transX)
-				// use round to dodge edge cases like:
-				// uint8(1.99999999999) -> 1
-				iC = color.RGBA{clamp(iR), clamp(iG), clamp(iB), clamp(iA)}
-			} else { // use four surrounding points
-				nX := math.Floor(transX)
-				nY := math.Floor(transY)
-
-				// surrounding points' r/g/b/a values
-				// p*[0][0] <- * value of [nX, nY] at src
-				// p*[0][1] <- * value of [nX + 1, nY] at src
-				// p*[1][0] <- * value of [nX, nY + 1] at src
-				// p*[1][1] <- * value of [nX + 1, nY + 1] at src
-				var pR, pG, pB, pA [2][2]float64
-
-				// temporarily saved value got from internalDivision in x-axis
-				// tmp*[0] <- * value got from internalDivision in y = nY
-				// tmp*[1] <- * value got from internalDivision in y = nY + 1
-				var tmpR, tmpG, tmpB, tmpA [2]float64
-
-				for i := range 2 {
-					for j := range 2 {
-						pRGBA := src.RGBAAt(int(nX)+j, int(nY)+i)
-						pR[i][j] = float64(pRGBA.R)
-						pG[i][j] = float64(pRGBA.G)
-						pB[i][j] = float64(pRGBA.B)
-						pA[i][j] = float64(pRGBA.A)
-					}
-					tmpR[i], tmpG[i], tmpB[i], tmpA[i] = internalDivision(&pR[i], &pG[i], &pB[i], &pA[i], nX, transX)
-				}
-
-				iR, iG, iB, iA := internalDivision(&tmpR, &tmpG, &tmpB, &tmpA, nY, transY)
-				// use round to dodge edge cases like:
-				// uint8(1.99999999999) -> 1
-				iC = color.RGBA{clamp(iR), clamp(iG), clamp(iB), clamp(iA)}
-			}
-			res.Set(x, y, iC)
-		}
+func (bl *Bilinear) Interpolate(concurrency bool) *image.RGBA {
+	funcName := "Bilinear"
+	if concurrency {
+		funcName += " with concurrency"
 	}
+	defer timeTrack(time.Now(), funcName)
+
+	oW := bl.output.Bounds().Dx()
+	oH := bl.output.Bounds().Dy()
 
 	if concurrency {
 		numCPU := runtime.NumCPU()
 		c := make(chan int, numCPU)
+
 		for i := range numCPU {
 			go func() {
-				operate(i*w*h/numCPU, (i+1)*w*h/numCPU)
+				bl.operate(i*oW*oH/numCPU, (i+1)*oW*oH/numCPU)
 				c <- 1
 			}()
 		}
+		// drain the channel
 		for i := 0; i < numCPU; i++ {
 			<-c
 		}
+		// all done
 	} else {
-		operate(0, w*h)
+		bl.operate(0, oW*oH)
 	}
 
-	return res
+	return bl.output
 }
 
-// https://en.wikipedia.org/wiki/Cubic_Hermite_spline#Interpolation_on_the_unit_interval_with_matched_derivatives_at_endpoints
-// p[0]: p_n-1
-// p[1]: p_n
-// p[2]: p_n+1
-// p[3]: p_n+2
-func catmullRomSpline(u float64, p *[4]float64) float64 {
+type Bicubic struct {
+	input, output *image.RGBA
+}
+
+// returns (x-axis scale, y-axis scale) = ((output width / input width), (output height / input height))
+func (bc *Bicubic) getScale() (scaleX float64, scaleY float64) {
+	iW := bc.input.Bounds().Dx()
+	iH := bc.input.Bounds().Dy()
+
+	oW := bc.output.Bounds().Dx()
+	oH := bc.output.Bounds().Dy()
+
+	return float64(oW) / float64(iW), float64(oH) / float64(iH)
+}
+
+// converts coordinates from output space to input space
+func (bc *Bicubic) transformCoords(x, y int) (tX float64, tY float64) {
+	scaleX, scaleY := bc.getScale()
+
+	offsetX := getOffset(scaleX)
+	offsetY := getOffset(scaleY)
+
+	return float64(x)/scaleX - offsetX, float64(y)/scaleY - offsetY
+}
+
+// interpolates a value f(v) that function f(t) takes at ordinate t=v
+// for more detail of formula, please refer to https://en.wikipedia.org/wiki/Cubic_Hermite_spline#Interpolation_on_the_unit_interval_with_matched_derivatives_at_endpoints
+// u: fractional part of v
+// p: color values at four points(p_n-1, p_n, p_n+1, p_n+2) for each color channel (RGBA)
+//   - index 0: color values at p_n-1
+//   - index 1: color values at p_n
+//   - index 2: color values at p_n+1
+//   - index 3: color values at p_n+2
+func (bc *Bicubic) catmullRomSpline(u float64, p *[4]float64) float64 {
 	u2 := u * u
 	u3 := u2 * u
 
@@ -277,183 +349,204 @@ func catmullRomSpline(u float64, p *[4]float64) float64 {
 	return 0.5 * (term1 + term2 + term3 + term4)
 }
 
-func Bicubic(src *image.RGBA, w, h int, concurrency bool) (*image.RGBA, error) {
-	defer timeTrack(time.Now(), "Bicubic")
+func (bc *Bicubic) operate(start, end int) {
+	iW := bc.input.Bounds().Dx()
+	iH := bc.input.Bounds().Dy()
 
-	srcRect := src.Bounds()
-	srcW := srcRect.Dx()
-	srcH := srcRect.Dy()
+	oW := bc.output.Bounds().Dx()
 
-	// we need at least 4 points to do bicubic interpolation
-	if srcW < 4 || srcH < 4 {
-		return nil, fmt.Errorf("src image should be larger than or equal to 4x4 but passed src has width: %d, height: %d", srcW, srcH)
-	}
+	for ; start < end; start++ {
+		x := start % oW
+		y := start / oW
 
-	scaleW := float64(w) / float64(srcW)
-	scaleH := float64(h) / float64(srcH)
+		// transformed x and y
+		tX, tY := bc.transformCoords(x, y)
 
-	res := image.NewRGBA(image.Rect(0, 0, w, h))
+		// boundary check
+		outX := tX < 1 || tX > float64(iW-2)
+		outY := tY < 1 || tY > float64(iH-2)
 
-	operate := func(start, end int) {
-		for ; start < end; start++ {
-			x := start % w
-			y := start / w
+		var iC color.RGBA
 
-			// transformed x and y
-			transX, transY := transformCoords(x, y, scaleW, scaleH, true)
+		// use just one nearest surrounding point
+		if outX && outY {
+			var nX int
+			var nY int
 
-			// boundary check
-			outX := transX < 1 || transX > float64(srcW-2)
-			outY := transY < 1 || transY > float64(srcH-2)
-
-			var iC color.RGBA
-
-			// use just one nearest surrounding point
-			if outX && outY {
-				var nX int
-				var nY int
-
-				if transX < 0.5 {
-					nX = 0
-				} else if transX < 1 {
-					nX = 1
-				} else if transX <= float64(srcW)-1.5 {
-					nX = srcW - 2
-				} else {
-					nX = srcW - 1
-				}
-
-				if transY < 0.5 {
-					nY = 0
-				} else if transY < 1 {
-					nY = 1
-				} else if transY <= float64(srcH)-1.5 {
-					nY = srcH - 2
-				} else {
-					nY = srcH - 1
-				}
-
-				iC = src.RGBAAt(nX, nY)
-			} else if outX { // use only y-axis
-				var nX int
-
-				if transX < 0.5 {
-					nX = 0
-				} else if transX < 1 {
-					nX = 1
-				} else if transX <= float64(srcW)-1.5 {
-					nX = srcW - 2
-				} else {
-					nX = srcW - 1
-				}
-
-				floorY := math.Floor(transY)
-				fractionY := transY - floorY
-
-				intY := int(floorY)
-
-				var pR, pG, pB, pA [4]float64
-
-				for i := range 4 {
-					pR[i] = float64(src.RGBAAt(nX, intY-1+i).R)
-					pG[i] = float64(src.RGBAAt(nX, intY-1+i).G)
-					pB[i] = float64(src.RGBAAt(nX, intY-1+i).B)
-					pA[i] = float64(src.RGBAAt(nX, intY-1+i).A)
-				}
-
-				iR := clamp(catmullRomSpline(fractionY, &pR))
-				iG := clamp(catmullRomSpline(fractionY, &pG))
-				iB := clamp(catmullRomSpline(fractionY, &pB))
-				iA := clamp(catmullRomSpline(fractionY, &pA))
-
-				iC = color.RGBA{iR, iG, iB, iA}
-			} else if outY { // use only x-axis
-				var nY int
-
-				if transY < 0.5 {
-					nY = 0
-				} else if transY < 1 {
-					nY = 1
-				} else if transY <= float64(srcH)-1.5 {
-					nY = srcH - 2
-				} else {
-					nY = srcH - 1
-				}
-
-				floorX := math.Floor(transX)
-				fractionX := transX - floorX
-
-				intX := int(floorX)
-
-				var pR, pG, pB, pA [4]float64
-
-				for i := range 4 {
-					pR[i] = float64(src.RGBAAt(intX-1+i, nY).R)
-					pG[i] = float64(src.RGBAAt(intX-1+i, nY).G)
-					pB[i] = float64(src.RGBAAt(intX-1+i, nY).B)
-					pA[i] = float64(src.RGBAAt(intX-1+i, nY).A)
-				}
-
-				iR := clamp(catmullRomSpline(fractionX, &pR))
-				iG := clamp(catmullRomSpline(fractionX, &pG))
-				iB := clamp(catmullRomSpline(fractionX, &pB))
-				iA := clamp(catmullRomSpline(fractionX, &pA))
-
-				iC = color.RGBA{iR, iG, iB, iA}
-			} else { // use both two axes, x first y later
-				floorX := math.Floor(transX)
-				fractionX := transX - floorX
-
-				intX := int(floorX)
-
-				floorY := math.Floor(transY)
-				fractionY := transY - floorY
-
-				intY := int(floorY)
-
-				var tmpR, tmpG, tmpB, tmpA [4]float64
-				var pR, pG, pB, pA [4][4]float64
-
-				for i := range 4 {
-					for j := range 4 {
-						pR[i][j] = float64(src.RGBAAt(intX-1+j, intY-1+i).R)
-						pG[i][j] = float64(src.RGBAAt(intX-1+j, intY-1+i).G)
-						pB[i][j] = float64(src.RGBAAt(intX-1+j, intY-1+i).B)
-						pA[i][j] = float64(src.RGBAAt(intX-1+j, intY-1+i).A)
-					}
-
-					tmpR[i] = catmullRomSpline(fractionX, &pR[i])
-					tmpG[i] = catmullRomSpline(fractionX, &pG[i])
-					tmpB[i] = catmullRomSpline(fractionX, &pB[i])
-					tmpA[i] = catmullRomSpline(fractionX, &pA[i])
-				}
-
-				iR := clamp(catmullRomSpline(fractionY, &tmpR))
-				iG := clamp(catmullRomSpline(fractionY, &tmpG))
-				iB := clamp(catmullRomSpline(fractionY, &tmpB))
-				iA := clamp(catmullRomSpline(fractionY, &tmpA))
-
-				iC = color.RGBA{iR, iG, iB, iA}
+			if tX < 0.5 {
+				nX = 0
+			} else if tX < 1 {
+				nX = 1
+			} else if tX <= float64(iW)-1.5 {
+				nX = iW - 2
+			} else {
+				nX = iW - 1
 			}
-			res.Set(x, y, iC)
+
+			if tY < 0.5 {
+				nY = 0
+			} else if tY < 1 {
+				nY = 1
+			} else if tY <= float64(iH)-1.5 {
+				nY = iH - 2
+			} else {
+				nY = iH - 1
+			}
+
+			iC = bc.input.RGBAAt(nX, nY)
+		} else if outX { // use only y-axis
+			var nX int
+
+			if tX < 0.5 {
+				nX = 0
+			} else if tX < 1 {
+				nX = 1
+			} else if tX <= float64(iW)-1.5 {
+				nX = iW - 2
+			} else {
+				nX = iW - 1
+			}
+
+			floorY := math.Floor(tY)
+			fractionY := tY - floorY
+
+			intY := int(floorY)
+
+			var pR, pG, pB, pA [4]float64
+
+			for i := range 4 {
+				pR[i] = float64(bc.input.RGBAAt(nX, intY-1+i).R)
+				pG[i] = float64(bc.input.RGBAAt(nX, intY-1+i).G)
+				pB[i] = float64(bc.input.RGBAAt(nX, intY-1+i).B)
+				pA[i] = float64(bc.input.RGBAAt(nX, intY-1+i).A)
+			}
+
+			iR := clamp(bc.catmullRomSpline(fractionY, &pR))
+			iG := clamp(bc.catmullRomSpline(fractionY, &pG))
+			iB := clamp(bc.catmullRomSpline(fractionY, &pB))
+			iA := clamp(bc.catmullRomSpline(fractionY, &pA))
+
+			iC = color.RGBA{iR, iG, iB, iA}
+		} else if outY { // use only x-axis
+			var nY int
+
+			if tY < 0.5 {
+				nY = 0
+			} else if tY < 1 {
+				nY = 1
+			} else if tY <= float64(iH)-1.5 {
+				nY = iH - 2
+			} else {
+				nY = iH - 1
+			}
+
+			floorX := math.Floor(tX)
+			fractionX := tX - floorX
+
+			intX := int(floorX)
+
+			var pR, pG, pB, pA [4]float64
+
+			for i := range 4 {
+				pR[i] = float64(bc.input.RGBAAt(intX-1+i, nY).R)
+				pG[i] = float64(bc.input.RGBAAt(intX-1+i, nY).G)
+				pB[i] = float64(bc.input.RGBAAt(intX-1+i, nY).B)
+				pA[i] = float64(bc.input.RGBAAt(intX-1+i, nY).A)
+			}
+
+			iR := clamp(bc.catmullRomSpline(fractionX, &pR))
+			iG := clamp(bc.catmullRomSpline(fractionX, &pG))
+			iB := clamp(bc.catmullRomSpline(fractionX, &pB))
+			iA := clamp(bc.catmullRomSpline(fractionX, &pA))
+
+			iC = color.RGBA{iR, iG, iB, iA}
+		} else { // use both two axes, x first y later
+			floorX := math.Floor(tX)
+			fractionX := tX - floorX
+
+			intX := int(floorX)
+
+			floorY := math.Floor(tY)
+			fractionY := tY - floorY
+
+			intY := int(floorY)
+
+			var tmpR, tmpG, tmpB, tmpA [4]float64
+			var pR, pG, pB, pA [4][4]float64
+
+			for i := range 4 {
+				for j := range 4 {
+					pR[i][j] = float64(bc.input.RGBAAt(intX-1+j, intY-1+i).R)
+					pG[i][j] = float64(bc.input.RGBAAt(intX-1+j, intY-1+i).G)
+					pB[i][j] = float64(bc.input.RGBAAt(intX-1+j, intY-1+i).B)
+					pA[i][j] = float64(bc.input.RGBAAt(intX-1+j, intY-1+i).A)
+				}
+
+				tmpR[i] = bc.catmullRomSpline(fractionX, &pR[i])
+				tmpG[i] = bc.catmullRomSpline(fractionX, &pG[i])
+				tmpB[i] = bc.catmullRomSpline(fractionX, &pB[i])
+				tmpA[i] = bc.catmullRomSpline(fractionX, &pA[i])
+			}
+
+			iR := clamp(bc.catmullRomSpline(fractionY, &tmpR))
+			iG := clamp(bc.catmullRomSpline(fractionY, &tmpG))
+			iB := clamp(bc.catmullRomSpline(fractionY, &tmpB))
+			iA := clamp(bc.catmullRomSpline(fractionY, &tmpA))
+
+			iC = color.RGBA{iR, iG, iB, iA}
 		}
+		bc.output.Set(x, y, iC)
 	}
+}
+
+func (bc *Bicubic) Interpolate(concurrency bool) *image.RGBA {
+	funcName := "Bicubic"
+	if concurrency {
+		funcName += " with concurrency"
+	}
+	defer timeTrack(time.Now(), funcName)
+
+	oW := bc.output.Bounds().Dx()
+	oH := bc.output.Bounds().Dy()
 
 	if concurrency {
 		numCPU := runtime.NumCPU()
 		c := make(chan int, numCPU)
+
 		for i := range numCPU {
 			go func() {
-				operate(i*w*h/numCPU, (i+1)*w*h/numCPU)
+				bc.operate(i*oW*oH/numCPU, (i+1)*oW*oH/numCPU)
 				c <- 1
 			}()
 		}
+		// drain the channel
 		for i := 0; i < numCPU; i++ {
 			<-c
 		}
+		// all done
 	} else {
-		operate(0, w*h)
+		bc.operate(0, oW*oH)
 	}
 
-	return res, nil
+	return bc.output
+}
+
+// helpers
+func timeTrack(start time.Time, funcName string) {
+	elapsed := time.Since(start)
+	fmt.Printf("%s interpolation took %v to run\n", funcName, elapsed)
+}
+
+func getOffset(scale float64) float64 {
+	return (scale - 1) / (2 * scale)
+}
+
+func clamp(v float64) uint8 {
+	if v > 255 { // overshoot
+		return 255
+	} else if v < 0 { // undershoot
+		return 0
+	} else {
+		return uint8(math.Round(v))
+	}
 }

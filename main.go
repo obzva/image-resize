@@ -2,15 +2,14 @@ package main
 
 import (
 	"flag"
-	"image"
-	"log"
-	"regexp"
-
 	"gthub.com/obzva/image-resize/imageio"
 	"gthub.com/obzva/image-resize/interpolation"
+	"log"
+	"regexp"
 )
 
 func main() {
+	// flags
 	pathPtr := flag.String("p", "", "input image path")
 	wPtr := flag.Int("w", 0, "desired width of an output image (defaults to the original width when omitted)")
 	hPtr := flag.Int("h", 0, "desired height of an output image (defaults to the original height when omitted)")
@@ -44,20 +43,9 @@ func main() {
 		*outputPtr = *methodPtr + ".jpg"
 	}
 
-	var res *image.RGBA
-	switch *methodPtr {
-	case "nearestneighbor":
-		res = interpolation.NearestNeighbor(src, *wPtr, *hPtr, *concurrencyPtr)
-	case "bilinear":
-		res = interpolation.Bilinear(src, *wPtr, *hPtr, *concurrencyPtr)
-	case "bicubic":
-		res, err = interpolation.Bicubic(src, *wPtr, *hPtr, *concurrencyPtr)
-		if err != nil {
-			log.Fatal(err)
-		}
-	default:
-		log.Fatal("wrong interpolation method passed")
-	}
+	it := interpolation.Init(src, *wPtr, *hPtr, *methodPtr)
+
+	res := it.Interpolate(*concurrencyPtr)
 
 	imageio.CreateImageFile(*outputPtr, res)
 }
