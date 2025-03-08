@@ -2,10 +2,12 @@ package main
 
 import (
 	"flag"
+	"log"
+	"math"
+	"regexp"
+
 	"gthub.com/obzva/image-resize/imageio"
 	"gthub.com/obzva/image-resize/interpolation"
-	"log"
-	"regexp"
 )
 
 func main() {
@@ -32,11 +34,16 @@ func main() {
 
 	src := imageio.ReadImage(*pathPtr)
 
-	if *wPtr == 0 {
-		*wPtr = src.Bounds().Dx()
-	}
-	if *hPtr == 0 {
-		*hPtr = src.Bounds().Dy()
+	if *wPtr == 0 && *hPtr == 0 {
+		log.Fatal("at least one dimension, w or h, is required")
+	} else if *wPtr == 0 {
+		iH := src.Bounds().Dy()
+		scale := float64(*hPtr) /  float64(iH)
+		*wPtr = int(math.Round(float64(src.Bounds().Dx()) * scale))
+	} else if *hPtr == 0 {
+		iW := src.Bounds().Dx()
+		scale := float64(*wPtr) /  float64(iW)
+		*hPtr = int(math.Round(float64(src.Bounds().Dx()) * scale))
 	}
 
 	if *outputPtr == "" {
