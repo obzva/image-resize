@@ -1,4 +1,4 @@
-package interpolation
+package interpolator
 
 import (
 	"image"
