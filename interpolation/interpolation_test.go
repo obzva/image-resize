@@ -41,7 +41,7 @@ func TestNearestNeighbor(t *testing.T) {
 		}
 	}
 
-	interpolator := Init(src, 6, 6, "nearestneighbor")
+	interpolator := New(src, 6, 6, "nearestneighbor")
 
 	// concurrency = false
 	actual := interpolator.Interpolate(false)
@@ -153,7 +153,7 @@ func TestBilinear(t *testing.T) {
 	expected.Set(2, 3, color.RGBA{113, 85, 113, 255})
 	expected.Set(3, 3, color.RGBA{141, 170, 56, 255})
 
-	interpolator := Init(src, 6, 6, "bilinear")
+	interpolator := New(src, 6, 6, "bilinear")
 
 	// concurrency = false
 	actual := interpolator.Interpolate(false)

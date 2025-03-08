@@ -50,7 +50,7 @@ func main() {
 		*outputPtr = *methodPtr + ".jpg"
 	}
 
-	it := interpolation.Init(src, *wPtr, *hPtr, *methodPtr)
+	it := interpolation.New(src, *wPtr, *hPtr, *methodPtr)
 
 	res := it.Interpolate(*concurrencyPtr)
 

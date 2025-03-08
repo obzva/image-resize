@@ -15,7 +15,7 @@ import (
 //   - nearestneighbor
 //   - bilinear
 //   - bicubic
-func Init(src *image.RGBA, w, h int, method string) Interpolator {
+func New(src *image.RGBA, w, h int, method string) Interpolator {
 	var interpolator Interpolator
 
 	switch method {
