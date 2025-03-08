@@ -43,7 +43,7 @@ func main() {
 	} else if *hPtr == 0 {
 		iW := src.Bounds().Dx()
 		scale := float64(*wPtr) /  float64(iW)
-		*hPtr = int(math.Round(float64(src.Bounds().Dx()) * scale))
+		*hPtr = int(math.Round(float64(src.Bounds().Dy()) * scale))
 	}
 
 	if *outputPtr == "" {
