@@ -1,3 +1,6 @@
+> [!IMPORTANT]  
+> I built a image-processing package. Visit [gato](https://github.com/obzva/gato).
+
 # image-resize
 
 A Go package for image resizing that supports multiple interpolation methods for images. (**only supports JPEG right now**)
